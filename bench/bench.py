@@ -133,8 +133,20 @@ CASES = [
         "mcp_args": lambda q, l: {"query": q, "limit": l},
     },
     {
+        "name": "search --compact",
+        "cli_args": ["--compact", "search", "{query}", "--json", "-l", "{limit}"],
+        "mcp_tool": "zotero_search_items",
+        "mcp_args": lambda q, l: {"query": q, "limit": l},
+    },
+    {
         "name": "recent",
         "cli_args": ["recent", "{limit}", "--json"],
+        "mcp_tool": "zotero_get_recent",
+        "mcp_args": lambda q, l: {"limit": l},
+    },
+    {
+        "name": "recent --compact",
+        "cli_args": ["--compact", "recent", "{limit}", "--json"],
         "mcp_tool": "zotero_get_recent",
         "mcp_args": lambda q, l: {"limit": l},
     },

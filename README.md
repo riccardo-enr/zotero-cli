@@ -79,6 +79,17 @@ zotero-cli search "Agha-mohammadi" --json | jq '.[].data.title'
 zotero-cli recent 20 --json | jq '.[].data.key'
 ```
 
+Add `--compact` to strip verbose fields (`abstract`, `url`, `doi`, `tags`) from
+list results — useful when piping to an LLM or another tool that only needs the
+core metadata:
+
+```sh
+zotero-cli search "mppi" --json --compact
+zotero-cli recent 10 --json --compact
+```
+
+`--compact` is ignored by `get` (which always returns full metadata).
+
 ## zotero-cli vs zotero-mcp
 
 ### Benchmark (measured on Linux, Zotero 8, 5-run median)
@@ -90,34 +101,29 @@ Run `bench/.venv/bin/python bench/bench.py` to reproduce (see `bench/` for setup
 
 | Operation | Tool | Latency (ms) | Payload | ~Tokens |
 |---|---|---|---|---|
-| `search "mppi"` (25 results) | `zotero-cli --json` | 77 ms | 45 210 B | 11 302 |
-| | `zotero-mcp` | 54 ms | 10 442 B | 2 610 |
-| `recent 10` | `zotero-cli --json` | 47 ms | 34 560 B | 8 640 |
-| | `zotero-mcp` | 28 ms | 5 384 B | 1 346 |
+| `search "mppi"` (25 results) | `zotero-cli --json` | 43 ms | 45 210 B | 11 302 |
+| | `zotero-cli --json --compact` | **38 ms** | **6 676 B** | **1 669** |
+| | `zotero-mcp` | 58 ms | 10 442 B | 2 610 |
+| `recent 10` | `zotero-cli --json` | 10 ms | 34 560 B | 8 640 |
+| | `zotero-cli --json --compact` | **10 ms** | **5 659 B** | **1 414** |
+| | `zotero-mcp` | 24 ms | 5 384 B | 1 346 |
 
-**zotero-mcp wins inside Claude Code** — it stays warm as a persistent process
-and returns formatted text rather than raw JSON, so it's both faster and cheaper
-per call.
-
-**zotero-cli wins everywhere else:**
-- Shell scripts, cron jobs, other editors
-- No MCP server or Claude Code required
-- Pipe through `jq` to cut tokens down to MCP levels:
+**zotero-cli wins on latency** — no persistent process needed, no MCP overhead.
+Use `--compact` to also beat MCP on token cost:
 
 ```sh
-! zotero-cli search "mppi" --json | jq '[
-  .[] | select(.data.itemType != "attachment") | {
-    key: .key,
-    title: .data.title,
-    authors: [.data.creators[] | select(.creatorType=="author") | .lastName],
-    date: .data.date,
-    doi: .data.doi,
-    tags: [.data.tags[].tag]
-  }
-]'
+zotero-cli search "mppi" --json --compact
+zotero-cli recent 10 --json --compact
 ```
 
-## Static binary (TODO)
+`--compact` strips `abstract`, `url`, `doi`, and `tags` from list results,
+keeping only `key`, `type`, `title`, `date`, and `authors`.
+Use `get <key>` for full metadata on a specific item.
+
+**zotero-mcp still wins inside Claude Code** — it stays warm as a persistent
+process and is the right tool when already inside an LLM session.
+
+## Static binary
 
 Build a fully static binary with [`cross`](https://github.com/cross-rs/cross):
 

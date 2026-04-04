@@ -9,11 +9,14 @@ use colored::Colorize;
 
 use client::ZoteroClient;
 use config::Config;
+use types::CompactItem;
 
 /* Zotero CLI — terminal interface for Zotero, mirroring the MCP operations.
 Talks to the Zotero local connector API running at localhost:23119.
 All subcommands default to human-readable table output; pass --json
-to emit raw JSON suitable for piping into jq or other tools. */
+to emit raw JSON suitable for piping into jq or other tools.
+Combine --json with --compact to strip verbose fields (abstract, url, doi,
+tags) for lower-token output when piping to an LLM. */
 
 #[derive(Parser)]
 #[command(
@@ -26,6 +29,10 @@ struct Cli {
     /* Emit raw JSON instead of human-readable tables */
     #[arg(long, global = true, help = "Output raw JSON")]
     json: bool,
+
+    /* Strip verbose fields (abstract, url, doi, tags) from JSON list output */
+    #[arg(long, global = true, help = "Strip verbose fields from JSON output")]
+    compact: bool,
 
     /* Override the API base URL (useful for debugging or remote instances) */
     #[arg(
@@ -80,15 +87,14 @@ enum AddKind {
     Url { url: String },
 }
 
-#[tokio::main]
-async fn main() {
-    if let Err(e) = run().await {
+fn main() {
+    if let Err(e) = run() {
         eprintln!("{} {:#}", "error:".red().bold(), e);
         std::process::exit(1);
     }
 }
 
-async fn run() -> Result<()> {
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     let mut cfg = Config::load()?;
@@ -100,16 +106,22 @@ async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Search { query, limit } => {
-            let items = client.search(&query, limit).await?;
+            let items = client.search(&query, limit)?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&items)?);
+                if cli.compact {
+                    let compact: Vec<CompactItem> =
+                        items.iter().map(CompactItem::from_item).collect();
+                    println!("{}", serde_json::to_string_pretty(&compact)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                }
             } else {
                 println!("{}", output::items_table(&items));
             }
         }
 
         Commands::Get { key } => {
-            let item = client.get(&key).await?;
+            let item = client.get(&key)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&item)?);
             } else {
@@ -118,7 +130,7 @@ async fn run() -> Result<()> {
         }
 
         Commands::Annotations { key } => {
-            let children = client.children(&key).await?;
+            let children = client.children(&key)?;
             if cli.json {
                 let annotations: Vec<&serde_json::Value> = children
                     .iter()
@@ -136,7 +148,7 @@ async fn run() -> Result<()> {
         }
 
         Commands::Notes { key } => {
-            let children = client.children(&key).await?;
+            let children = client.children(&key)?;
             if cli.json {
                 let notes: Vec<&serde_json::Value> = children
                     .iter()
@@ -154,18 +166,32 @@ async fn run() -> Result<()> {
         }
 
         Commands::Collections => {
-            let cols = client.collections().await?;
+            let cols = client.collections()?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&cols)?);
+                if cli.compact {
+                    let compact: Vec<serde_json::Value> = cols
+                        .iter()
+                        .map(|c| serde_json::json!({"key": c.key, "name": c.data.name}))
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&compact)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&cols)?);
+                }
             } else {
                 println!("{}", output::collections_table(&cols));
             }
         }
 
         Commands::Collection { id } => {
-            let items = client.collection_items(&id).await?;
+            let items = client.collection_items(&id)?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&items)?);
+                if cli.compact {
+                    let compact: Vec<CompactItem> =
+                        items.iter().map(CompactItem::from_item).collect();
+                    println!("{}", serde_json::to_string_pretty(&compact)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                }
             } else {
                 println!("{}", output::items_table(&items));
             }
@@ -173,17 +199,17 @@ async fn run() -> Result<()> {
 
         Commands::Add { kind } => match kind {
             AddKind::Doi { doi } => {
-                let result = client.add_doi(&doi).await?;
+                let result = client.add_doi(&doi)?;
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
             AddKind::Url { url } => {
-                let result = client.add_url(&url).await?;
+                let result = client.add_url(&url)?;
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
         },
 
         Commands::Tags => {
-            let tags = client.tags().await?;
+            let tags = client.tags()?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&tags)?);
             } else {
@@ -192,9 +218,15 @@ async fn run() -> Result<()> {
         }
 
         Commands::Recent { n } => {
-            let items = client.recent(n).await?;
+            let items = client.recent(n)?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&items)?);
+                if cli.compact {
+                    let compact: Vec<CompactItem> =
+                        items.iter().map(CompactItem::from_item).collect();
+                    println!("{}", serde_json::to_string_pretty(&compact)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                }
             } else {
                 println!("{}", output::items_table(&items));
             }
