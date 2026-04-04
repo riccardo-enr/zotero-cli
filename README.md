@@ -79,38 +79,30 @@ zotero-cli search "Agha-mohammadi" --json | jq '.[].data.title'
 zotero-cli recent 20 --json | jq '.[].data.key'
 ```
 
-## Use as a drop-in for the Zotero MCP in Claude Code
+## zotero-cli vs zotero-mcp
 
-`zotero-cli` can replace `mcp__zotero__*` tool calls inside Claude Code sessions.
-Run it with the `!` prefix to pipe output directly into the conversation:
+### Benchmark (measured on Linux, Zotero 8, 5-run median)
 
-```sh
-! zotero-cli search "mppi" --json | jq '[.[] | select(.data.itemType != "attachment")]'
-! zotero-cli get PEPC47XF --json
-! zotero-cli recent 10 --json
-```
+Run `python3 bench/bench.py` to reproduce.
 
-### Why bother?
-
-- Works outside Claude Code (shell scripts, other editors, cron jobs)
-- No MCP server process required
-- Filter and reshape the JSON with `jq` before it hits the context window
-
-### Benchmark (measured on Linux, Zotero 8 local API)
-
-| Operation | Latency | Raw payload | After `jq` strip |
+| Operation | Tool | Latency | ~Tokens |
 |---|---|---|---|
-| `search "mppi"` (25 results) | ~78 ms | ~11 k tokens | ~4 k tokens |
-| `recent 10` | ~76 ms | ~2.9 k tokens | ~1 k tokens |
+| `search "mppi"` (25 results) | `zotero-cli --json` | 77 ms | 11 302 |
+| | `zotero-mcp` | 54 ms | 2 610 |
+| `recent 10` | `zotero-cli --json` | 47 ms | 8 640 |
+| | `zotero-mcp` | 28 ms | 1 346 |
 
-Token estimates use the 1 token ≈ 4 chars rule. "After `jq` strip" removes
-attachment items and keeps only `key`, `title`, `itemType`, `date`, `creators`,
-`tags`, and `doi`.
+**zotero-mcp wins inside Claude Code** — it stays warm as a persistent process
+and returns formatted text rather than raw JSON, so it's both faster and cheaper
+per call.
 
-Recommended `jq` filter for Claude Code use:
+**zotero-cli wins everywhere else:**
+- Shell scripts, cron jobs, other editors
+- No MCP server or Claude Code required
+- Pipe through `jq` to cut tokens down to MCP levels:
 
 ```sh
-zotero-cli search "query" --json | jq '[
+! zotero-cli search "mppi" --json | jq '[
   .[] | select(.data.itemType != "attachment") | {
     key: .key,
     title: .data.title,
