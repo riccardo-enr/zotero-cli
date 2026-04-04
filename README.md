@@ -1,5 +1,7 @@
 # zotero-cli
 
+> **Vibe-coded project.** This is a personal tool built for fun and speed — not a replacement for [zotero-mcp](https://github.com/kujenga/zotero-mcp), which is more mature, more featureful, and actively maintained. If you're inside Claude Code or another LLM client, use zotero-mcp instead.
+
 Terminal interface for [Zotero](https://www.zotero.org/), mirroring the MCP operations without needing an LLM. Talks to the Zotero local connector API on `localhost:23119`.
 
 ## Prerequisites
