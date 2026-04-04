@@ -1,0 +1,27 @@
+[package]
+name = "zotero-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal interface for Zotero library operations"
+
+[[bin]]
+name = "zotero"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tabled = "0.16"
+colored = "2"
+anyhow = "1"
+dirs = "5"
+toml = "0.8"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
