@@ -17,7 +17,7 @@ to emit raw JSON suitable for piping into jq or other tools. */
 
 #[derive(Parser)]
 #[command(
-    name = "zotero",
+    name = "zotero-cli",
     about = "Terminal interface for your Zotero library",
     version,
     propagate_version = true

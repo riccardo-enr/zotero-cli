@@ -5,7 +5,7 @@ edition = "2021"
 description = "Terminal interface for Zotero library operations"
 
 [[bin]]
-name = "zotero"
+name = "zotero-cli"
 path = "src/main.rs"
 
 [dependencies]
