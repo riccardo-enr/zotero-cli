@@ -79,6 +79,49 @@ zotero-cli search "Agha-mohammadi" --json | jq '.[].data.title'
 zotero-cli recent 20 --json | jq '.[].data.key'
 ```
 
+## Use as a drop-in for the Zotero MCP in Claude Code
+
+`zotero-cli` can replace `mcp__zotero__*` tool calls inside Claude Code sessions.
+Run it with the `!` prefix to pipe output directly into the conversation:
+
+```sh
+! zotero-cli search "mppi" --json | jq '[.[] | select(.data.itemType != "attachment")]'
+! zotero-cli get PEPC47XF --json
+! zotero-cli recent 10 --json
+```
+
+### Why bother?
+
+- Works outside Claude Code (shell scripts, other editors, cron jobs)
+- No MCP server process required
+- Filter and reshape the JSON with `jq` before it hits the context window
+
+### Benchmark (measured on Linux, Zotero 8 local API)
+
+| Operation | Latency | Raw payload | After `jq` strip |
+|---|---|---|---|
+| `search "mppi"` (25 results) | ~78 ms | ~11 k tokens | ~4 k tokens |
+| `recent 10` | ~76 ms | ~2.9 k tokens | ~1 k tokens |
+
+Token estimates use the 1 token ≈ 4 chars rule. "After `jq` strip" removes
+attachment items and keeps only `key`, `title`, `itemType`, `date`, `creators`,
+`tags`, and `doi`.
+
+Recommended `jq` filter for Claude Code use:
+
+```sh
+zotero-cli search "query" --json | jq '[
+  .[] | select(.data.itemType != "attachment") | {
+    key: .key,
+    title: .data.title,
+    authors: [.data.creators[] | select(.creatorType=="author") | .lastName],
+    date: .data.date,
+    doi: .data.doi,
+    tags: [.data.tags[].tag]
+  }
+]'
+```
+
 ## Static binary (TODO)
 
 Build a fully static binary with [`cross`](https://github.com/cross-rs/cross):
