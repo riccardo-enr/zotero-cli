@@ -30,9 +30,11 @@ struct Cli {
     #[arg(long, global = true, help = "Output raw JSON")]
     json: bool,
 
-    /* Strip verbose fields (abstract, url, doi, tags) from JSON list output */
-    #[arg(long, global = true, help = "Strip verbose fields from JSON output")]
-    compact: bool,
+    /* Include verbose fields (abstract, url, doi, tags) in JSON list output.
+       By default list commands emit compact JSON; pass --no-compact to get
+       the full payload. */
+    #[arg(long, global = true, help = "Include verbose fields in JSON output (abstract, url, doi, tags)")]
+    no_compact: bool,
 
     /* Override the API base URL (useful for debugging or remote instances) */
     #[arg(
@@ -108,7 +110,7 @@ fn run() -> Result<()> {
         Commands::Search { query, limit } => {
             let items = client.search(&query, limit)?;
             if cli.json {
-                if cli.compact {
+                if !cli.no_compact {
                     let compact: Vec<CompactItem> =
                         items.iter().map(CompactItem::from_item).collect();
                     println!("{}", serde_json::to_string_pretty(&compact)?);
@@ -168,7 +170,7 @@ fn run() -> Result<()> {
         Commands::Collections => {
             let cols = client.collections()?;
             if cli.json {
-                if cli.compact {
+                if !cli.no_compact {
                     let compact: Vec<serde_json::Value> = cols
                         .iter()
                         .map(|c| serde_json::json!({"key": c.key, "name": c.data.name}))
@@ -185,7 +187,7 @@ fn run() -> Result<()> {
         Commands::Collection { id } => {
             let items = client.collection_items(&id)?;
             if cli.json {
-                if cli.compact {
+                if !cli.no_compact {
                     let compact: Vec<CompactItem> =
                         items.iter().map(CompactItem::from_item).collect();
                     println!("{}", serde_json::to_string_pretty(&compact)?);
@@ -220,7 +222,7 @@ fn run() -> Result<()> {
         Commands::Recent { n } => {
             let items = client.recent(n)?;
             if cli.json {
-                if cli.compact {
+                if !cli.no_compact {
                     let compact: Vec<CompactItem> =
                         items.iter().map(CompactItem::from_item).collect();
                     println!("{}", serde_json::to_string_pretty(&compact)?);

@@ -79,16 +79,17 @@ zotero-cli search "Agha-mohammadi" --json | jq '.[].data.title'
 zotero-cli recent 20 --json | jq '.[].data.key'
 ```
 
-Add `--compact` to strip verbose fields (`abstract`, `url`, `doi`, `tags`) from
-list results — useful when piping to an LLM or another tool that only needs the
-core metadata:
+List commands (`search`, `recent`, `collection`, `collections`) emit compact
+JSON by default — stripping `abstract`, `url`, `doi`, and `tags` to keep
+payloads small. Pass `--no-compact` for the full payload:
 
 ```sh
-zotero-cli search "mppi" --json --compact
-zotero-cli recent 10 --json --compact
+zotero-cli search "mppi" --json            # compact by default
+zotero-cli recent 10 --json                # compact by default
+zotero-cli search "mppi" --json --no-compact  # full payload
 ```
 
-`--compact` is ignored by `get` (which always returns full metadata).
+`get` always returns full metadata regardless of this flag.
 
 ## zotero-cli vs zotero-mcp
 
@@ -101,24 +102,16 @@ Run `bench/.venv/bin/python bench/bench.py` to reproduce (see `bench/` for setup
 
 | Operation | Tool | Latency (ms) | Payload | ~Tokens |
 |---|---|---|---|---|
-| `search "mppi"` (25 results) | `zotero-cli --json` | 43 ms | 45 210 B | 11 302 |
-| | `zotero-cli --json --compact` | **38 ms** | **6 676 B** | **1 669** |
+| `search "mppi"` (25 results) | `zotero-cli --json` | **38 ms** | **6 676 B** | **1 669** |
+| | `zotero-cli --json --no-compact` | 43 ms | 45 210 B | 11 302 |
 | | `zotero-mcp` | 58 ms | 10 442 B | 2 610 |
-| `recent 10` | `zotero-cli --json` | 10 ms | 34 560 B | 8 640 |
-| | `zotero-cli --json --compact` | **10 ms** | **5 659 B** | **1 414** |
+| `recent 10` | `zotero-cli --json` | **10 ms** | **5 659 B** | **1 414** |
+| | `zotero-cli --json --no-compact` | 10 ms | 34 560 B | 8 640 |
 | | `zotero-mcp` | 24 ms | 5 384 B | 1 346 |
 
-**zotero-cli wins on latency** — no persistent process needed, no MCP overhead.
-Use `--compact` to also beat MCP on token cost:
-
-```sh
-zotero-cli search "mppi" --json --compact
-zotero-cli recent 10 --json --compact
-```
-
-`--compact` strips `abstract`, `url`, `doi`, and `tags` from list results,
-keeping only `key`, `type`, `title`, `date`, and `authors`.
-Use `get <key>` for full metadata on a specific item.
+**zotero-cli wins on both latency and token cost by default** — compact JSON
+(key, type, title, date, authors) is the default for list commands. Use
+`--no-compact` or `get <key>` when you need the full payload.
 
 **zotero-mcp still wins inside Claude Code** — it stays warm as a persistent
 process and is the right tool when already inside an LLM session.

@@ -127,26 +127,26 @@ def cli_call(args: list[str]) -> tuple[float, int]:
 
 CASES = [
     {
-        "name": "search",
+        "name": "search (default)",
         "cli_args": ["search", "{query}", "--json", "-l", "{limit}"],
         "mcp_tool": "zotero_search_items",
         "mcp_args": lambda q, l: {"query": q, "limit": l},
     },
     {
-        "name": "search --compact",
-        "cli_args": ["--compact", "search", "{query}", "--json", "-l", "{limit}"],
+        "name": "search --no-compact",
+        "cli_args": ["search", "{query}", "--json", "--no-compact", "-l", "{limit}"],
         "mcp_tool": "zotero_search_items",
         "mcp_args": lambda q, l: {"query": q, "limit": l},
     },
     {
-        "name": "recent",
+        "name": "recent (default)",
         "cli_args": ["recent", "{limit}", "--json"],
         "mcp_tool": "zotero_get_recent",
         "mcp_args": lambda q, l: {"limit": l},
     },
     {
-        "name": "recent --compact",
-        "cli_args": ["--compact", "recent", "{limit}", "--json"],
+        "name": "recent --no-compact",
+        "cli_args": ["recent", "{limit}", "--json", "--no-compact"],
         "mcp_tool": "zotero_get_recent",
         "mcp_args": lambda q, l: {"limit": l},
     },
