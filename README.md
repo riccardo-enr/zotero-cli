@@ -11,31 +11,32 @@ curl -s http://localhost:23119/connector/ping
 # → <!DOCTYPE html><html><body>Zotero is running</body></html>
 ```
 
-## Build
-
-```sh
-cargo build --release
-# binary at: target/release/zotero
-```
-
-Or install directly to `~/.cargo/bin`:
+## Install
 
 ```sh
 cargo install --path .
+# installs zotero-cli to ~/.cargo/bin
+```
+
+Or just build without installing:
+
+```sh
+cargo build --release
+# binary at: target/release/zotero-cli
 ```
 
 ## Quick check
 
 ```sh
-zotero recent 5          # last 5 added items
-zotero search "author year"
-zotero config            # show current config path and values
+zotero-cli recent 5          # last 5 added items
+zotero-cli search "author year"
+zotero-cli config            # show current config path and values
 ```
 
 ## Usage
 
 ```
-zotero [OPTIONS] <COMMAND>
+zotero-cli [OPTIONS] <COMMAND>
 
 Options:
   --json        Output raw JSON (works on all subcommands)
@@ -73,8 +74,8 @@ Without `user_id` set, all requests go to the local Zotero instance (no API key 
 Every subcommand supports `--json` for piping:
 
 ```sh
-zotero search "Agha-mohammadi" --json | jq '.[].data.title'
-zotero recent 20 --json | jq '.[].data.key'
+zotero-cli search "Agha-mohammadi" --json | jq '.[].data.title'
+zotero-cli recent 20 --json | jq '.[].data.key'
 ```
 
 ## Static binary (TODO)
