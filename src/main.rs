@@ -42,43 +42,35 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /* Search items by keyword */
+    #[command(about = "Search items by keyword")]
     Search {
         query: String,
-        #[arg(short, long, default_value_t = 25)]
+        #[arg(short, long, default_value_t = 25, help = "Max results")]
         limit: usize,
     },
-    /* Get full metadata for an item by its key */
-    Get {
-        key: String,
-    },
-    /* List PDF annotations for an item */
-    Annotations {
-        key: String,
-    },
-    /* List notes attached to an item */
-    Notes {
-        key: String,
-    },
-    /* List all collections */
+    #[command(about = "Get full metadata for an item")]
+    Get { key: String },
+    #[command(about = "List PDF annotations for an item")]
+    Annotations { key: String },
+    #[command(about = "List notes attached to an item")]
+    Notes { key: String },
+    #[command(about = "List all collections")]
     Collections,
-    /* List items in a collection */
-    Collection {
-        id: String,
-    },
-    /* Add an item by DOI or URL */
+    #[command(about = "List items in a collection")]
+    Collection { id: String },
+    #[command(about = "Add an item by DOI or URL")]
     Add {
         #[command(subcommand)]
         kind: AddKind,
     },
-    /* List all tags in the library */
+    #[command(about = "List all tags in the library")]
     Tags,
-    /* Show the N most recently added items */
+    #[command(about = "Show the N most recently added items (default: 10)")]
     Recent {
         #[arg(default_value_t = 10)]
         n: usize,
     },
-    /* Print the config file path and current settings */
+    #[command(about = "Print config file path and active settings")]
     Config,
 }
 
