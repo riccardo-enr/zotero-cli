@@ -42,14 +42,10 @@ impl ZoteroClient {
 
     /* Build the library-scoped path prefix, e.g. /users/123 or /groups/456 */
     fn lib_path(&self) -> Result<String> {
-        match self.user_id {
-            Some(id) => Ok(format!("/{}/{}", pluralise(&self.library_type), id)),
-            None => {
-                /* Fall back to the local connector's /api path which does not
-                   require a user id — works for the default local library. */
-                Ok(String::new())
-            }
-        }
+        /* userID=0 is a special alias for the currently logged-in user's
+           local library — always valid against the local connector API. */
+        let id = self.user_id.unwrap_or(0);
+        Ok(format!("/{}/{}", pluralise(&self.library_type), id))
     }
 
     /* ------------------------------------------------------------------ */
