@@ -28,6 +28,7 @@ cargo build --release
 ## Quick check
 
 ```sh
+zotero-cli --help
 zotero-cli recent 5          # last 5 added items
 zotero-cli search "author year"
 zotero-cli config            # show current config path and values
