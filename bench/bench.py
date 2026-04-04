@@ -8,11 +8,13 @@ operations, so the README numbers stay honest and reproducible.
 Usage:
     python3 bench/bench.py
     python3 bench/bench.py --runs 10 --query "mppi"
+    python3 bench/bench.py --no-plot        # skip matplotlib output
 
 Requirements:
     - Zotero must be running (localhost:23119)
     - zotero-cli installed in PATH  (cargo install --path .)
     - zotero-mcp installed in PATH  (uv tool install zotero-mcp)
+    - matplotlib + scienceplots     (bench/.venv/bin/python bench/bench.py)
 """
 
 import argparse
@@ -21,11 +23,13 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 RUNS = 5
 MCP_CMD = "zotero-mcp"
 CLI_CMD = "zotero-cli"
 MCP_ENV = {**os.environ, "ZOTERO_LOCAL": "true"}
+OUT_DIR = Path(__file__).parent / "plots"
 
 # ---------------------------------------------------------------------------
 # MCP client (JSON-RPC over stdio)
@@ -68,36 +72,30 @@ class McpClient:
 
     def _initialize(self):
         self._id += 1
-        self._send(
-            {
-                "jsonrpc": "2.0",
-                "id": self._id,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {"name": "bench", "version": "0.1"},
-                },
-            }
-        )
+        self._send({
+            "jsonrpc": "2.0",
+            "id": self._id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "bench", "version": "0.1"},
+            },
+        })
         self._recv_id(self._id)
-        self._send(
-            {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
-        )
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
 
     def call(self, tool: str, arguments: dict) -> tuple[float, int]:
         """Call a tool, return (latency_seconds, response_bytes)."""
         self._id += 1
         msg_id = self._id
         t0 = time.perf_counter()
-        self._send(
-            {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "method": "tools/call",
-                "params": {"name": tool, "arguments": arguments},
-            }
-        )
+        self._send({
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        })
         resp = self._recv_id(msg_id)
         latency = time.perf_counter() - t0
         content = resp.get("result", {}).get("content", [])
@@ -118,10 +116,7 @@ class McpClient:
 def cli_call(args: list[str]) -> tuple[float, int]:
     """Run zotero-cli, return (latency_seconds, response_bytes)."""
     t0 = time.perf_counter()
-    result = subprocess.run(
-        [CLI_CMD] + args,
-        capture_output=True,
-    )
+    result = subprocess.run([CLI_CMD] + args, capture_output=True)
     latency = time.perf_counter() - t0
     return latency, len(result.stdout)
 
@@ -164,13 +159,101 @@ def run_case(case: dict, query: str, limit: int, runs: int, mcp: McpClient):
         mcp_sizes.append(size)
 
     return {
-        "cli_latency_ms": sorted(cli_latencies)[runs // 2] * 1000,  # median
+        "cli_latencies": cli_latencies,
+        "mcp_latencies": mcp_latencies,
+        "cli_latency_ms": sorted(cli_latencies)[runs // 2] * 1000,   # median
         "mcp_latency_ms": sorted(mcp_latencies)[runs // 2] * 1000,
         "cli_bytes": sorted(cli_sizes)[runs // 2],
         "mcp_bytes": sorted(mcp_sizes)[runs // 2],
         "cli_tokens_approx": sorted(cli_sizes)[runs // 2] // 4,
         "mcp_tokens_approx": sorted(mcp_sizes)[runs // 2] // 4,
     }
+
+
+# ---------------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------------
+
+
+def make_plots(results: dict, out_dir: Path) -> list[Path]:
+    import scienceplots  # noqa: F401
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    plt.style.use("science")
+    plt.rcParams["figure.dpi"] = 150
+
+    out_dir.mkdir(exist_ok=True)
+    saved = []
+    names = [n for n, r in results.items() if r is not None]
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    cli_color, mcp_color = colors[0], colors[1]
+
+    # ------------------------------------------------------------------
+    # Figure 1 — latency comparison (grouped bar + jitter)
+    # ------------------------------------------------------------------
+    fig, axes = plt.subplots(1, len(names), figsize=(3.5 * len(names), 3),
+                             constrained_layout=True)
+    if len(names) == 1:
+        axes = [axes]
+
+    for ax, name in zip(axes, names):
+        r = results[name]
+        runs = len(r["cli_latencies"])
+        xs = np.arange(runs)
+
+        cli_ms = np.array(r["cli_latencies"]) * 1000
+        mcp_ms = np.array(r["mcp_latencies"]) * 1000
+
+        ax.scatter(xs - 0.15, cli_ms, color=cli_color, s=18, zorder=3, label="zotero-cli")
+        ax.scatter(xs + 0.15, mcp_ms, color=mcp_color, s=18, zorder=3, label="zotero-mcp")
+        ax.axhline(r["cli_latency_ms"], color=cli_color, lw=0.8, ls="--", alpha=0.7)
+        ax.axhline(r["mcp_latency_ms"], color=mcp_color, lw=0.8, ls="--", alpha=0.7)
+
+        ax.set_title(f"`{name}`")
+        ax.set_xlabel("run")
+        ax.set_ylabel("latency (ms)")
+        ax.set_xticks(xs)
+        ax.legend(fontsize=7)
+
+    fig.suptitle("Latency: zotero-cli vs zotero-mcp", fontsize=10)
+    p = out_dir / "latency.png"
+    fig.savefig(p, dpi=300)
+    plt.close(fig)
+    saved.append(p)
+    print(f"  saved {p}")
+
+    # ------------------------------------------------------------------
+    # Figure 2 — token count comparison (horizontal bar)
+    # ------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(5, 2.5), constrained_layout=True)
+
+    y = np.arange(len(names))
+    bar_h = 0.35
+
+    cli_tokens = [results[n]["cli_tokens_approx"] for n in names]
+    mcp_tokens = [results[n]["mcp_tokens_approx"] for n in names]
+
+    ax.barh(y + bar_h / 2, cli_tokens, bar_h, color=cli_color, label="zotero-cli")
+    ax.barh(y - bar_h / 2, mcp_tokens, bar_h, color=mcp_color, label="zotero-mcp")
+
+    for i, (cv, mv) in enumerate(zip(cli_tokens, mcp_tokens)):
+        ax.text(cv + 50, i + bar_h / 2, str(cv), va="center", fontsize=7)
+        ax.text(mv + 50, i - bar_h / 2, str(mv), va="center", fontsize=7)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([f"`{n}`" for n in names])
+    ax.set_xlabel(r"approximate tokens (1 token $\approx$ 4 chars)")
+    ax.set_title("Response token cost: zotero-cli vs zotero-mcp")
+    ax.legend(fontsize=8)
+
+    p = out_dir / "tokens.png"
+    fig.savefig(p, dpi=300)
+    plt.close(fig)
+    saved.append(p)
+    print(f"  saved {p}")
+
+    return saved
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +268,7 @@ def main():
     parser.add_argument("--runs", type=int, default=RUNS)
     parser.add_argument("--query", default="mppi")
     parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--no-plot", action="store_true", help="Skip plot generation")
     args = parser.parse_args()
 
     print(f"Benchmarking: {args.runs} runs, query='{args.query}', limit={args.limit}")
@@ -198,9 +282,7 @@ def main():
     for case in CASES:
         print(f"Running case: {case['name']}...")
         try:
-            results[case["name"]] = run_case(
-                case, args.query, args.limit, args.runs, mcp
-            )
+            results[case["name"]] = run_case(case, args.query, args.limit, args.runs, mcp)
         except Exception as e:
             print(f"  FAILED: {e}", file=sys.stderr)
             results[case["name"]] = None
@@ -209,46 +291,32 @@ def main():
 
     # Print table
     print()
-    print(
-        f"{'Operation':<20} {'Tool':<12} {'Latency (ms)':<16} {'Payload (bytes)':<18} {'~Tokens'}"
-    )
+    print(f"{'Operation':<20} {'Tool':<12} {'Latency (ms)':<16} {'Payload (bytes)':<18} {'~Tokens'}")
     print("-" * 80)
     for name, r in results.items():
         if r is None:
             print(f"{name:<20} FAILED")
             continue
-        print(
-            f"{name:<20} {'zotero-cli':<12} {r['cli_latency_ms']:<16.1f} {r['cli_bytes']:<18} {r['cli_tokens_approx']}"
-        )
-        print(
-            f"{'':<20} {'zotero-mcp':<12} {r['mcp_latency_ms']:<16.1f} {r['mcp_bytes']:<18} {r['mcp_tokens_approx']}"
-        )
-        speedup = (
-            r["mcp_latency_ms"] / r["cli_latency_ms"] if r["cli_latency_ms"] else 0
-        )
-        token_ratio = (
-            r["mcp_tokens_approx"] / r["cli_tokens_approx"]
-            if r["cli_tokens_approx"]
-            else 0
-        )
-        print(
-            f"  → CLI is {speedup:.1f}x faster, MCP sends {token_ratio:.1f}x more tokens"
-        )
+        print(f"{name:<20} {'zotero-cli':<12} {r['cli_latency_ms']:<16.1f} {r['cli_bytes']:<18} {r['cli_tokens_approx']}")
+        print(f"{'':<20} {'zotero-mcp':<12} {r['mcp_latency_ms']:<16.1f} {r['mcp_bytes']:<18} {r['mcp_tokens_approx']}")
+        speedup = r["mcp_latency_ms"] / r["cli_latency_ms"] if r["cli_latency_ms"] else 0
+        token_ratio = r["mcp_tokens_approx"] / r["cli_tokens_approx"] if r["cli_tokens_approx"] else 0
+        print(f"  → CLI is {speedup:.1f}x faster, MCP sends {token_ratio:.1f}x more tokens")
         print()
 
-    # Emit markdown table for README copy-paste
+    if not args.no_plot:
+        print("Generating plots...")
+        make_plots(results, OUT_DIR)
+
+    # Markdown table
     print("\n--- Markdown table ---")
     print("| Operation | Tool | Latency (ms) | Payload | ~Tokens |")
     print("|---|---|---|---|---|")
     for name, r in results.items():
         if r is None:
             continue
-        print(
-            f"| `{name}` | `zotero-cli` | {r['cli_latency_ms']:.0f} ms | {r['cli_bytes']} B | {r['cli_tokens_approx']} |"
-        )
-        print(
-            f"| | `zotero-mcp` | {r['mcp_latency_ms']:.0f} ms | {r['mcp_bytes']} B | {r['mcp_tokens_approx']} |"
-        )
+        print(f"| `{name}` | `zotero-cli` | {r['cli_latency_ms']:.0f} ms | {r['cli_bytes']} B | {r['cli_tokens_approx']} |")
+        print(f"| | `zotero-mcp` | {r['mcp_latency_ms']:.0f} ms | {r['mcp_bytes']} B | {r['mcp_tokens_approx']} |")
 
 
 if __name__ == "__main__":

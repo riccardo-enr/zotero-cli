@@ -83,14 +83,17 @@ zotero-cli recent 20 --json | jq '.[].data.key'
 
 ### Benchmark (measured on Linux, Zotero 8, 5-run median)
 
-Run `python3 bench/bench.py` to reproduce.
+Run `bench/.venv/bin/python bench/bench.py` to reproduce (see `bench/` for setup).
 
-| Operation | Tool | Latency | ~Tokens |
-|---|---|---|---|
-| `search "mppi"` (25 results) | `zotero-cli --json` | 77 ms | 11 302 |
-| | `zotero-mcp` | 54 ms | 2 610 |
-| `recent 10` | `zotero-cli --json` | 47 ms | 8 640 |
-| | `zotero-mcp` | 28 ms | 1 346 |
+![Latency comparison](bench/plots/latency.png)
+![Token cost comparison](bench/plots/tokens.png)
+
+| Operation | Tool | Latency (ms) | Payload | ~Tokens |
+|---|---|---|---|---|
+| `search "mppi"` (25 results) | `zotero-cli --json` | 77 ms | 45 210 B | 11 302 |
+| | `zotero-mcp` | 54 ms | 10 442 B | 2 610 |
+| `recent 10` | `zotero-cli --json` | 47 ms | 34 560 B | 8 640 |
+| | `zotero-mcp` | 28 ms | 5 384 B | 1 346 |
 
 **zotero-mcp wins inside Claude Code** — it stays warm as a persistent process
 and returns formatted text rather than raw JSON, so it's both faster and cheaper
