@@ -9,12 +9,11 @@ const API_VERSION: &str = "3";
 const TRANSLATOR_URL: &str = "http://localhost:1969/web";
 
 /* ZoteroClient wraps the Zotero local connector API (localhost:23119/api).
-Uses a synchronous HTTP client (ureq) — each CLI invocation makes exactly
+Uses a synchronous HTTP client (minreq) — each CLI invocation makes exactly
 one request to localhost so async provides no benefit and only adds runtime
-cold-start overhead. */
+cold-start overhead. minreq without TLS keeps the dependency tree minimal. */
 
 pub struct ZoteroClient {
-    http: ureq::Agent,
     base: String,
     api_key: Option<String>,
     user_id: Option<u64>,
@@ -23,11 +22,7 @@ pub struct ZoteroClient {
 
 impl ZoteroClient {
     pub fn new(cfg: &Config) -> Result<Self> {
-        let http = ureq::AgentBuilder::new()
-            .timeout(std::time::Duration::from_secs(30))
-            .build();
         Ok(ZoteroClient {
-            http,
             base: cfg.api_base.clone(),
             api_key: cfg.api_key.clone(),
             user_id: cfg.user_id,
@@ -35,12 +30,40 @@ impl ZoteroClient {
         })
     }
 
-    fn auth(&self, req: ureq::Request) -> ureq::Request {
+    fn get_json(&self, url: &str) -> Result<String> {
+        let mut req = minreq::get(url).with_timeout(30);
         if let Some(key) = &self.api_key {
-            req.set("Zotero-API-Key", key)
-        } else {
-            req
+            req = req.with_header("Zotero-API-Key", key);
         }
+        let resp = req.send().context("sending request")?;
+        if resp.status_code >= 400 {
+            anyhow::bail!(
+                "Zotero API error {}: {}",
+                resp.status_code,
+                resp.as_str().unwrap_or_default()
+            );
+        }
+        Ok(resp.as_str().context("reading response body")?.to_string())
+    }
+
+    fn post_json(&self, url: &str, payload: &Value) -> Result<String> {
+        let body = serde_json::to_string(payload)?;
+        let mut req = minreq::post(url)
+            .with_header("Content-Type", "application/json")
+            .with_body(body)
+            .with_timeout(30);
+        if let Some(key) = &self.api_key {
+            req = req.with_header("Zotero-API-Key", key);
+        }
+        let resp = req.send().context("sending request")?;
+        if resp.status_code >= 400 {
+            anyhow::bail!(
+                "Zotero API error {}: {}",
+                resp.status_code,
+                resp.as_str().unwrap_or_default()
+            );
+        }
+        Ok(resp.as_str().context("reading response body")?.to_string())
     }
 
     /* Build the library-scoped path prefix, e.g. /users/123 or /groups/456 */
@@ -49,22 +72,6 @@ impl ZoteroClient {
         local library — always valid against the local connector API. */
         let id = self.user_id.unwrap_or(0);
         format!("/{}/{}", pluralise(&self.library_type), id)
-    }
-
-    fn get_body(&self, url: &str) -> Result<String> {
-        let body = self
-            .auth(self.http.get(url))
-            .call()
-            .map_err(|e| match e {
-                ureq::Error::Status(code, resp) => {
-                    let msg = resp.into_string().unwrap_or_default();
-                    anyhow::anyhow!("Zotero API error {code}: {msg}")
-                }
-                e => anyhow::anyhow!("{e}"),
-            })?
-            .into_string()
-            .context("reading response body")?;
-        Ok(body)
     }
 
     /* ------------------------------------------------------------------ */
@@ -80,14 +87,14 @@ impl ZoteroClient {
             encode(query),
             limit
         );
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing search results")
     }
 
     pub fn get(&self, key: &str) -> Result<ZoteroItem> {
         let lib = self.lib_path();
         let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing item")
     }
 
@@ -98,7 +105,7 @@ impl ZoteroClient {
     pub fn children(&self, key: &str) -> Result<Vec<Value>> {
         let lib = self.lib_path();
         let url = format!("{}{}/items/{}/children?v={API_VERSION}", self.base, lib, key);
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing children")
     }
 
@@ -109,14 +116,14 @@ impl ZoteroClient {
     pub fn collections(&self) -> Result<Vec<ZoteroCollection>> {
         let lib = self.lib_path();
         let url = format!("{}{}/collections?v={API_VERSION}", self.base, lib);
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing collections")
     }
 
     pub fn collection_items(&self, id: &str) -> Result<Vec<ZoteroItem>> {
         let lib = self.lib_path();
         let url = format!("{}{}/collections/{}/items?v={API_VERSION}", self.base, lib, id);
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing collection items")
     }
 
@@ -127,7 +134,7 @@ impl ZoteroClient {
     pub fn tags(&self) -> Result<Vec<Value>> {
         let lib = self.lib_path();
         let url = format!("{}{}/tags?v={API_VERSION}", self.base, lib);
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing tags")
     }
 
@@ -141,7 +148,7 @@ impl ZoteroClient {
             "{}{}/items?sort=dateAdded&direction=desc&limit={}&v={API_VERSION}",
             self.base, lib, n
         );
-        let body = self.get_body(&url)?;
+        let body = self.get_json(&url)?;
         serde_json::from_str(&body).context("parsing recent")
     }
 
@@ -155,38 +162,29 @@ impl ZoteroClient {
             "itemType": "journalArticle",
             "DOI": doi
         }]);
-        let body = self
-            .auth(self.http.post(&url))
-            .send_json(payload)
-            .map_err(|e| match e {
-                ureq::Error::Status(code, resp) => {
-                    let msg = resp.into_string().unwrap_or_default();
-                    anyhow::anyhow!("Zotero API error {code}: {msg}")
-                }
-                e => anyhow::anyhow!("{e}"),
-            })?
-            .into_string()
-            .context("reading response body")?;
+        let body = self.post_json(&url, &payload)?;
         serde_json::from_str(&body).context("parsing add doi response")
     }
 
     pub fn add_url(&self, add_url: &str) -> Result<Value> {
         let translate_url = TRANSLATOR_URL;
         let payload = serde_json::json!({ "url": add_url, "sessionID": "zotero-cli" });
-        let body = self
-            .http
-            .post(translate_url)
-            .send_json(payload)
-            .map_err(|e| match e {
-                ureq::Error::Status(code, resp) => {
-                    let msg = resp.into_string().unwrap_or_default();
-                    anyhow::anyhow!("Zotero translator error {code}: {msg}")
-                }
-                e => anyhow::anyhow!("{e}"),
-            })?
-            .into_string()
-            .context("reading response body")?;
-        serde_json::from_str(&body).context("parsing add url response")
+        let body = serde_json::to_string(&payload)?;
+        let resp = minreq::post(translate_url)
+            .with_header("Content-Type", "application/json")
+            .with_body(body)
+            .with_timeout(30)
+            .send()
+            .context("sending request")?;
+        if resp.status_code >= 400 {
+            anyhow::bail!(
+                "Zotero translator error {}: {}",
+                resp.status_code,
+                resp.as_str().unwrap_or_default()
+            );
+        }
+        let resp_body = resp.as_str().context("reading response body")?;
+        serde_json::from_str(resp_body).context("parsing add url response")
     }
 }
 
