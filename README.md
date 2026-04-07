@@ -107,12 +107,12 @@ Run `bench/.venv/bin/python bench/bench.py` to reproduce (see `bench/` for setup
 
 | Operation | Tool | Latency (ms) | Payload | ~Tokens |
 |---|---|---|---|---|
-| `search "mppi"` (25 results) | `zotero-cli --json` | **38 ms** | **6 676 B** | **1 669** |
-| | `zotero-cli --json --no-compact` | 43 ms | 45 210 B | 11 302 |
-| | `zotero-mcp` | 58 ms | 10 442 B | 2 610 |
-| `recent 10` | `zotero-cli --json` | **10 ms** | **5 659 B** | **1 414** |
-| | `zotero-cli --json --no-compact` | 10 ms | 34 560 B | 8 640 |
-| | `zotero-mcp` | 24 ms | 5 384 B | 1 346 |
+| `search "mppi"` (25 results) | `zotero-cli --json` | **47 ms** | **6 176 B** | **1 544** |
+| | `zotero-cli --json --no-compact` | 44 ms | 41 640 B | 10 410 |
+| | `zotero-mcp` | 64 ms | 9 643 B | 2 410 |
+| `recent 10` | `zotero-cli --json` | **15 ms** | **5 040 B** | **1 260** |
+| | `zotero-cli --json --no-compact` | 12 ms | 27 682 B | 6 920 |
+| | `zotero-mcp` | 33 ms | 5 001 B | 1 250 |
 
 **zotero-cli wins on both latency and token cost by default** — compact JSON
 (key, type, title, date, authors) is the default for list commands. Use
@@ -120,6 +120,9 @@ Run `bench/.venv/bin/python bench/bench.py` to reproduce (see `bench/` for setup
 
 **zotero-mcp still wins inside Claude Code** — it stays warm as a persistent
 process and is the right tool when already inside an LLM session.
+
+HTTP client: `minreq` (no TLS — localhost doesn't need it). Dependency tree
+is ~45 crates, down from ~89 with the previous `ureq` backend.
 
 ## Static binary
 
