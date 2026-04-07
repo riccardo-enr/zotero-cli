@@ -97,3 +97,147 @@ pub struct ZoteroCollection {
     pub key: String,
     pub data: CollectionData,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /* ---- Creator::display_name ---- */
+
+    #[test]
+    fn display_name_first_and_last() {
+        let c = Creator {
+            creator_type: Some("author".into()),
+            first_name: Some("Alan".into()),
+            last_name: Some("Turing".into()),
+            name: None,
+        };
+        assert_eq!(c.display_name(), "Turing, Alan");
+    }
+
+    #[test]
+    fn display_name_last_only() {
+        let c = Creator {
+            creator_type: Some("author".into()),
+            first_name: None,
+            last_name: Some("Turing".into()),
+            name: None,
+        };
+        assert_eq!(c.display_name(), "Turing");
+    }
+
+    #[test]
+    fn display_name_institutional() {
+        let c = Creator {
+            creator_type: Some("author".into()),
+            first_name: None,
+            last_name: None,
+            name: Some("IEEE".into()),
+        };
+        assert_eq!(c.display_name(), "IEEE");
+    }
+
+    #[test]
+    fn display_name_fallback_unknown() {
+        let c = Creator {
+            creator_type: Some("author".into()),
+            first_name: None,
+            last_name: None,
+            name: None,
+        };
+        assert_eq!(c.display_name(), "Unknown");
+    }
+
+    /* ---- CompactItem::from_item ---- */
+
+    #[test]
+    fn compact_item_filters_authors_only() {
+        let item = ZoteroItem {
+            key: "K1".into(),
+            data: ItemData {
+                key: "K1".into(),
+                title: Some("Title".into()),
+                item_type: Some("journalArticle".into()),
+                date: Some("2024".into()),
+                abstract_note: None,
+                creators: vec![
+                    Creator {
+                        creator_type: Some("author".into()),
+                        first_name: Some("Alice".into()),
+                        last_name: Some("Smith".into()),
+                        name: None,
+                    },
+                    Creator {
+                        creator_type: Some("editor".into()),
+                        first_name: Some("Bob".into()),
+                        last_name: Some("Jones".into()),
+                        name: None,
+                    },
+                ],
+                tags: vec![Tag { tag: "ml".into() }],
+                doi: Some("10.1234/test".into()),
+                url: None,
+            },
+        };
+        let compact = CompactItem::from_item(&item);
+        assert_eq!(compact.key, "K1");
+        assert_eq!(compact.authors.len(), 1);
+        assert_eq!(compact.authors[0], "Smith, Alice");
+    }
+
+    #[test]
+    fn compact_item_no_creators() {
+        let item = ZoteroItem {
+            key: "K2".into(),
+            data: ItemData {
+                key: "K2".into(),
+                title: None,
+                item_type: None,
+                date: None,
+                abstract_note: None,
+                creators: vec![],
+                tags: vec![],
+                doi: None,
+                url: None,
+            },
+        };
+        let compact = CompactItem::from_item(&item);
+        assert!(compact.authors.is_empty());
+        assert!(compact.title.is_none());
+    }
+
+    /* ---- serde deserialization ---- */
+
+    #[test]
+    fn item_data_deserializes_with_missing_optional_fields() {
+        let json = r#"{"key": "ABC", "title": "Test"}"#;
+        let data: ItemData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.key, "ABC");
+        assert_eq!(data.title.as_deref(), Some("Test"));
+        assert!(data.creators.is_empty());
+        assert!(data.tags.is_empty());
+        assert!(data.doi.is_none());
+    }
+
+    #[test]
+    fn zotero_item_roundtrip() {
+        let json = r#"{
+            "key": "XYZ",
+            "data": {
+                "key": "XYZ",
+                "title": "Round Trip",
+                "itemType": "book",
+                "creators": [{"creatorType": "author", "lastName": "Doe"}],
+                "tags": [{"tag": "test"}]
+            }
+        }"#;
+        let item: ZoteroItem = serde_json::from_str(json).unwrap();
+        assert_eq!(item.key, "XYZ");
+        assert_eq!(item.data.creators.len(), 1);
+        assert_eq!(item.data.tags[0].tag, "test");
+
+        let serialized = serde_json::to_string(&item).unwrap();
+        let item2: ZoteroItem = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(item2.key, "XYZ");
+    }
+}

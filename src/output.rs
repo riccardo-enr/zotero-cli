@@ -246,3 +246,227 @@ fn strip_html(s: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::*;
+
+    /* ---- truncate ---- */
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_exact_length_unchanged() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string_adds_ellipsis() {
+        let result = truncate("hello world", 5);
+        assert_eq!(result, "hell…");
+    }
+
+    #[test]
+    fn truncate_empty_string() {
+        assert_eq!(truncate("", 5), "");
+    }
+
+    #[test]
+    fn truncate_unicode() {
+        assert_eq!(truncate("café latte", 5), "café…");
+    }
+
+    /* ---- wrap ---- */
+
+    #[test]
+    fn wrap_short_text_no_wrapping() {
+        assert_eq!(wrap("hello world", 80), "hello world");
+    }
+
+    #[test]
+    fn wrap_long_text_wraps_at_boundary() {
+        let result = wrap("aaa bbb ccc", 7);
+        assert_eq!(result, "aaa bbb\nccc");
+    }
+
+    #[test]
+    fn wrap_empty_string() {
+        assert_eq!(wrap("", 80), "");
+    }
+
+    #[test]
+    fn wrap_single_long_word() {
+        assert_eq!(wrap("superlongword", 5), "superlongword");
+    }
+
+    /* ---- strip_html ---- */
+
+    #[test]
+    fn strip_html_removes_tags() {
+        assert_eq!(strip_html("<p>hello</p>"), "hello");
+    }
+
+    #[test]
+    fn strip_html_nested_tags() {
+        assert_eq!(strip_html("<div><b>bold</b> text</div>"), "bold text");
+    }
+
+    #[test]
+    fn strip_html_no_tags() {
+        assert_eq!(strip_html("plain text"), "plain text");
+    }
+
+    #[test]
+    fn strip_html_empty() {
+        assert_eq!(strip_html(""), "");
+    }
+
+    #[test]
+    fn strip_html_self_closing() {
+        assert_eq!(strip_html("line<br/>break"), "linebreak");
+    }
+
+    #[test]
+    fn strip_html_with_attributes() {
+        assert_eq!(
+            strip_html("<a href=\"http://example.com\">link</a>"),
+            "link"
+        );
+    }
+
+    /* ---- items_table ---- */
+
+    #[test]
+    fn items_table_empty() {
+        let result = items_table(&[]);
+        assert!(result.contains("No items found"));
+    }
+
+    #[test]
+    fn items_table_renders_rows() {
+        let items = vec![make_item("ABC123", "Test Title", "journalArticle")];
+        let result = items_table(&items);
+        assert!(result.contains("ABC123"));
+        assert!(result.contains("Test Title"));
+    }
+
+    /* ---- annotations_table ---- */
+
+    #[test]
+    fn annotations_table_empty() {
+        let result = annotations_table(&[]);
+        assert!(result.contains("No annotations found"));
+    }
+
+    #[test]
+    fn annotations_table_filters_non_annotations() {
+        let children = vec![serde_json::json!({
+            "key": "N1",
+            "data": { "itemType": "note", "note": "some note" }
+        })];
+        let result = annotations_table(&children);
+        assert!(result.contains("No annotations found"));
+    }
+
+    #[test]
+    fn annotations_table_renders_annotation() {
+        let children = vec![serde_json::json!({
+            "key": "A1",
+            "data": {
+                "itemType": "annotation",
+                "annotationType": "highlight",
+                "annotationPageLabel": "5",
+                "annotationText": "important text",
+                "annotationComment": "my comment"
+            }
+        })];
+        let result = annotations_table(&children);
+        assert!(result.contains("A1"));
+        assert!(result.contains("highlight"));
+        assert!(result.contains("important text"));
+    }
+
+    /* ---- notes_table ---- */
+
+    #[test]
+    fn notes_table_empty() {
+        let result = notes_table(&[]);
+        assert!(result.contains("No notes found"));
+    }
+
+    #[test]
+    fn notes_table_strips_html() {
+        let children = vec![serde_json::json!({
+            "key": "N1",
+            "data": { "itemType": "note", "note": "<p>Hello <b>world</b></p>" }
+        })];
+        let result = notes_table(&children);
+        assert!(result.contains("Hello world"));
+    }
+
+    /* ---- collections_table ---- */
+
+    #[test]
+    fn collections_table_empty() {
+        let result = collections_table(&[]);
+        assert!(result.contains("No collections found"));
+    }
+
+    #[test]
+    fn collections_table_renders() {
+        let cols = vec![ZoteroCollection {
+            key: "COL1".into(),
+            data: CollectionData {
+                key: "COL1".into(),
+                name: "My Collection".into(),
+                parent_collection: None,
+            },
+        }];
+        let result = collections_table(&cols);
+        assert!(result.contains("COL1"));
+        assert!(result.contains("My Collection"));
+    }
+
+    /* ---- tags_table ---- */
+
+    #[test]
+    fn tags_table_empty() {
+        let result = tags_table(&[]);
+        assert!(result.contains("No tags found"));
+    }
+
+    #[test]
+    fn tags_table_renders() {
+        let tags = vec![serde_json::json!({"tag": "machine learning", "type": 0})];
+        let result = tags_table(&tags);
+        assert!(result.contains("machine learning"));
+    }
+
+    /* ---- test helpers ---- */
+
+    fn make_item(key: &str, title: &str, item_type: &str) -> ZoteroItem {
+        ZoteroItem {
+            key: key.into(),
+            data: ItemData {
+                key: key.into(),
+                title: Some(title.into()),
+                item_type: Some(item_type.into()),
+                date: Some("2024".into()),
+                abstract_note: None,
+                creators: vec![Creator {
+                    creator_type: Some("author".into()),
+                    first_name: Some("Jane".into()),
+                    last_name: Some("Doe".into()),
+                    name: None,
+                }],
+                tags: vec![],
+                doi: None,
+                url: None,
+            },
+        }
+    }
+}
