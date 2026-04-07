@@ -1,5 +1,7 @@
 # zotero-cli
 
+[![CI](https://github.com/riccardo-enr/zotero-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/riccardo-enr/zotero-cli/actions/workflows/ci.yml)
+
 > [!Warning]
 > **Vibe-coded project.** This is a personal tool built for fun and speed — not a replacement for [zotero-mcp](https://github.com/kujenga/zotero-mcp), which is more mature, more featureful, and actively maintained. If you're inside Claude Code or another LLM client, use zotero-mcp instead.
 
