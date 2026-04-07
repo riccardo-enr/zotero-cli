@@ -41,13 +41,20 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Result<Self> {
         let path = config_path();
-        if !path.exists() {
-            return Ok(Config::default());
+        let mut cfg = if path.exists() {
+            let text = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading config at {}", path.display()))?;
+            toml::from_str(&text).with_context(|| format!("parsing config at {}", path.display()))?
+        } else {
+            Config::default()
+        };
+        // env var overrides
+        if let Ok(base) = std::env::var("ZOTERO_API_BASE") {
+            cfg.api_base = base;
         }
-        let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading config at {}", path.display()))?;
-        let cfg: Config =
-            toml::from_str(&text).with_context(|| format!("parsing config at {}", path.display()))?;
+        if let Ok(key) = std::env::var("ZOTERO_API_KEY") {
+            cfg.api_key = Some(key);
+        }
         Ok(cfg)
     }
 

@@ -4,7 +4,7 @@ mod output;
 mod types;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use colored::Colorize;
 
 use client::ZoteroClient;
@@ -81,6 +81,11 @@ enum Commands {
     },
     #[command(about = "Print config file path and active settings")]
     Config,
+    #[command(about = "Generate shell completions")]
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -232,6 +237,15 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", output::items_table(&items));
             }
+        }
+
+        Commands::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "zotero-cli",
+                &mut std::io::stdout(),
+            );
         }
 
         Commands::Config => {
