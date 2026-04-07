@@ -3,6 +3,12 @@ use tabled::{builder::Builder, settings::Style};
 
 use crate::types::{ZoteroCollection, ZoteroItem};
 
+const TITLE_MAX_WIDTH: usize = 55;
+const AUTHORS_MAX_WIDTH: usize = 30;
+const ANNOTATION_TEXT_MAX_WIDTH: usize = 50;
+const ANNOTATION_COMMENT_MAX_WIDTH: usize = 40;
+const NOTE_MAX_WIDTH: usize = 80;
+
 /* Human-readable table renderers. Each function returns a String so callers
    can decide whether to print or buffer. */
 
@@ -14,7 +20,7 @@ pub fn items_table(items: &[ZoteroItem]) -> String {
     builder.push_record(["Key", "Type", "Title", "Authors", "Date"]);
     for item in items {
         let d = &item.data;
-        let title = truncate(d.title.as_deref().unwrap_or("—"), 55);
+        let title = truncate(d.title.as_deref().unwrap_or("—"), TITLE_MAX_WIDTH);
         let authors = d
             .creators
             .iter()
@@ -22,7 +28,7 @@ pub fn items_table(items: &[ZoteroItem]) -> String {
             .map(|c| c.display_name())
             .collect::<Vec<_>>()
             .join("; ");
-        let authors = truncate(if authors.is_empty() { "—" } else { &authors }, 30);
+        let authors = truncate(if authors.is_empty() { "—" } else { &authors }, AUTHORS_MAX_WIDTH);
         builder.push_record([
             &d.key,
             d.item_type.as_deref().unwrap_or("—"),
@@ -111,13 +117,13 @@ pub fn annotations_table(children: &[serde_json::Value]) -> String {
             d.get("annotationText")
                 .and_then(|v| v.as_str())
                 .unwrap_or("—"),
-            50,
+            ANNOTATION_TEXT_MAX_WIDTH,
         );
         let comment = truncate(
             d.get("annotationComment")
                 .and_then(|v| v.as_str())
                 .unwrap_or("—"),
-            40,
+            ANNOTATION_COMMENT_MAX_WIDTH,
         );
         builder.push_record([key, atype, page, &text, &comment]);
     }
@@ -155,7 +161,7 @@ pub fn notes_table(children: &[serde_json::Value]) -> String {
             .unwrap_or("—");
         /* Strip basic HTML tags for display */
         let clean = strip_html(raw);
-        builder.push_record([key, &truncate(&clean, 80)]);
+        builder.push_record([key, &truncate(&clean, NOTE_MAX_WIDTH)]);
     }
     builder.build()
         .with(Style::modern())

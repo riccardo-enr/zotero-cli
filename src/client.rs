@@ -5,6 +5,9 @@ use urlencoding::encode;
 use crate::config::Config;
 use crate::types::{ZoteroCollection, ZoteroItem};
 
+const API_VERSION: &str = "3";
+const TRANSLATOR_URL: &str = "http://localhost:1969/web";
+
 /* ZoteroClient wraps the Zotero local connector API (localhost:23119/api).
 Uses a synchronous HTTP client (ureq) — each CLI invocation makes exactly
 one request to localhost so async provides no benefit and only adds runtime
@@ -71,7 +74,7 @@ impl ZoteroClient {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<ZoteroItem>> {
         let lib = self.lib_path();
         let url = format!(
-            "{}{}/items?q={}&limit={}&v=3",
+            "{}{}/items?q={}&limit={}&v={API_VERSION}",
             self.base,
             lib,
             encode(query),
@@ -83,7 +86,7 @@ impl ZoteroClient {
 
     pub fn get(&self, key: &str) -> Result<ZoteroItem> {
         let lib = self.lib_path();
-        let url = format!("{}{}/items/{}?v=3", self.base, lib, key);
+        let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
         let body = self.get_body(&url)?;
         serde_json::from_str(&body).context("parsing item")
     }
@@ -94,7 +97,7 @@ impl ZoteroClient {
 
     pub fn children(&self, key: &str) -> Result<Vec<Value>> {
         let lib = self.lib_path();
-        let url = format!("{}{}/items/{}/children?v=3", self.base, lib, key);
+        let url = format!("{}{}/items/{}/children?v={API_VERSION}", self.base, lib, key);
         let body = self.get_body(&url)?;
         serde_json::from_str(&body).context("parsing children")
     }
@@ -105,14 +108,14 @@ impl ZoteroClient {
 
     pub fn collections(&self) -> Result<Vec<ZoteroCollection>> {
         let lib = self.lib_path();
-        let url = format!("{}{}/collections?v=3", self.base, lib);
+        let url = format!("{}{}/collections?v={API_VERSION}", self.base, lib);
         let body = self.get_body(&url)?;
         serde_json::from_str(&body).context("parsing collections")
     }
 
     pub fn collection_items(&self, id: &str) -> Result<Vec<ZoteroItem>> {
         let lib = self.lib_path();
-        let url = format!("{}{}/collections/{}/items?v=3", self.base, lib, id);
+        let url = format!("{}{}/collections/{}/items?v={API_VERSION}", self.base, lib, id);
         let body = self.get_body(&url)?;
         serde_json::from_str(&body).context("parsing collection items")
     }
@@ -123,7 +126,7 @@ impl ZoteroClient {
 
     pub fn tags(&self) -> Result<Vec<Value>> {
         let lib = self.lib_path();
-        let url = format!("{}{}/tags?v=3", self.base, lib);
+        let url = format!("{}{}/tags?v={API_VERSION}", self.base, lib);
         let body = self.get_body(&url)?;
         serde_json::from_str(&body).context("parsing tags")
     }
@@ -135,7 +138,7 @@ impl ZoteroClient {
     pub fn recent(&self, n: usize) -> Result<Vec<ZoteroItem>> {
         let lib = self.lib_path();
         let url = format!(
-            "{}{}/items?sort=dateAdded&direction=desc&limit={}&v=3",
+            "{}{}/items?sort=dateAdded&direction=desc&limit={}&v={API_VERSION}",
             self.base, lib, n
         );
         let body = self.get_body(&url)?;
@@ -147,7 +150,7 @@ impl ZoteroClient {
     /* ------------------------------------------------------------------ */
 
     pub fn add_doi(&self, doi: &str) -> Result<Value> {
-        let url = format!("{}/items?v=3", self.base);
+        let url = format!("{}/items?v={API_VERSION}", self.base);
         let payload = serde_json::json!([{
             "itemType": "journalArticle",
             "DOI": doi
@@ -168,7 +171,7 @@ impl ZoteroClient {
     }
 
     pub fn add_url(&self, add_url: &str) -> Result<Value> {
-        let translate_url = "http://localhost:1969/web";
+        let translate_url = TRANSLATOR_URL;
         let payload = serde_json::json!({ "url": add_url, "sessionID": "zotero-cli" });
         let body = self
             .http
