@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-/* Zotero API item data as returned by the local connector API. Only the
-   fields we care about are declared; unknown fields are ignored. */
+/* Zotero API item data as returned by the local connector API. Explicitly
+   declared fields cover the most commonly used metadata; the `extra` map
+   captures every remaining Zotero field (publisher, journal, volume, etc.)
+   so they round-trip through serialization without data loss. */
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemData {
     pub key: String,
+    pub version: Option<u64>,
     pub title: Option<String>,
     pub item_type: Option<String>,
     pub date: Option<String>,
@@ -15,8 +18,12 @@ pub struct ItemData {
     pub creators: Vec<Creator>,
     #[serde(default)]
     pub tags: Vec<Tag>,
+    #[serde(default)]
+    pub collections: Vec<String>,
     pub doi: Option<String>,
     pub url: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -49,6 +56,7 @@ pub struct Tag {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ZoteroItem {
     pub key: String,
+    pub version: u64,
     pub data: ItemData,
 }
 
@@ -154,8 +162,10 @@ mod tests {
     fn compact_item_filters_authors_only() {
         let item = ZoteroItem {
             key: "K1".into(),
+            version: 0,
             data: ItemData {
                 key: "K1".into(),
+                version: None,
                 title: Some("Title".into()),
                 item_type: Some("journalArticle".into()),
                 date: Some("2024".into()),
@@ -175,8 +185,10 @@ mod tests {
                     },
                 ],
                 tags: vec![Tag { tag: "ml".into() }],
+                collections: vec![],
                 doi: Some("10.1234/test".into()),
                 url: None,
+                extra: serde_json::Map::new(),
             },
         };
         let compact = CompactItem::from_item(&item);
@@ -189,16 +201,20 @@ mod tests {
     fn compact_item_no_creators() {
         let item = ZoteroItem {
             key: "K2".into(),
+            version: 0,
             data: ItemData {
                 key: "K2".into(),
+                version: None,
                 title: None,
                 item_type: None,
                 date: None,
                 abstract_note: None,
                 creators: vec![],
                 tags: vec![],
+                collections: vec![],
                 doi: None,
                 url: None,
+                extra: serde_json::Map::new(),
             },
         };
         let compact = CompactItem::from_item(&item);
@@ -223,6 +239,7 @@ mod tests {
     fn zotero_item_roundtrip() {
         let json = r#"{
             "key": "XYZ",
+            "version": 5,
             "data": {
                 "key": "XYZ",
                 "title": "Round Trip",

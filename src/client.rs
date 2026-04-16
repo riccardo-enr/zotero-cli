@@ -153,6 +153,51 @@ impl ZoteroClient {
     }
 
     /* ------------------------------------------------------------------ */
+    /*  Mutate items                                                        */
+    /* ------------------------------------------------------------------ */
+
+    fn patch_json(&self, url: &str, payload: &Value, version: u64) -> Result<String> {
+        let body = serde_json::to_string(payload)?;
+        let mut req = minreq::patch(url)
+            .with_header("Content-Type", "application/json")
+            .with_header("If-Unmodified-Since-Version", version.to_string())
+            .with_body(body)
+            .with_timeout(30);
+        if let Some(key) = &self.api_key {
+            req = req.with_header("Zotero-API-Key", key);
+        }
+        let resp = req.send().context("sending PATCH request")?;
+        if resp.status_code == 412 {
+            anyhow::bail!(
+                "item was modified since it was retrieved (version conflict) -- retry"
+            );
+        }
+        if resp.status_code >= 400 {
+            anyhow::bail!(
+                "Zotero API error {}: {}",
+                resp.status_code,
+                resp.as_str().unwrap_or_default()
+            );
+        }
+        Ok(resp.as_str().context("reading response body")?.to_string())
+    }
+
+    pub fn patch_item(&self, key: &str, version: u64, data: &Value) -> Result<()> {
+        let lib = self.lib_path();
+        let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
+        self.patch_json(&url, data, version)?;
+        Ok(())
+    }
+
+    pub fn trash_item(&self, key: &str, version: u64) -> Result<()> {
+        let lib = self.lib_path();
+        let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
+        let payload = serde_json::json!({"deleted": 1});
+        self.patch_json(&url, &payload, version)?;
+        Ok(())
+    }
+
+    /* ------------------------------------------------------------------ */
     /*  Add items                                                           */
     /* ------------------------------------------------------------------ */
 

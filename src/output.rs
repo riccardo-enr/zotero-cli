@@ -457,8 +457,10 @@ mod tests {
     fn make_item(key: &str, title: &str, item_type: &str) -> ZoteroItem {
         ZoteroItem {
             key: key.into(),
+            version: 0,
             data: ItemData {
                 key: key.into(),
+                version: None,
                 title: Some(title.into()),
                 item_type: Some(item_type.into()),
                 date: Some("2024".into()),
@@ -470,8 +472,10 @@ mod tests {
                     name: None,
                 }],
                 tags: vec![],
+                collections: vec![],
                 doi: None,
                 url: None,
+                extra: serde_json::Map::new(),
             },
         }
     }

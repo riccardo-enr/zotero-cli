@@ -1,9 +1,10 @@
 mod client;
 mod config;
+mod merge;
 mod output;
 mod types;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use colored::Colorize;
 
@@ -78,6 +79,19 @@ enum Commands {
     Recent {
         #[arg(default_value_t = 10)]
         n: usize,
+    },
+    #[command(about = "Merge two items (combine metadata, children, tags, collections)")]
+    Merge {
+        /// Key of the first item
+        key1: String,
+        /// Key of the second item
+        key2: String,
+        /// Preview changes without applying them
+        #[arg(long, help = "Preview changes without applying them")]
+        dry_run: bool,
+        /// Key of the item to keep as primary (default: first key)
+        #[arg(long, value_name = "KEY", help = "Key of the item to keep as primary")]
+        keep: Option<String>,
     },
     #[command(about = "Print config file path and active settings")]
     Config,
@@ -237,6 +251,83 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", output::items_table(&items));
             }
+        }
+
+        Commands::Merge {
+            key1,
+            key2,
+            dry_run,
+            keep,
+        } => {
+            let (target_key, source_key) = if let Some(ref k) = keep {
+                if k == &key1 {
+                    (&key1, &key2)
+                } else if k == &key2 {
+                    (&key2, &key1)
+                } else {
+                    anyhow::bail!("--keep must be one of the two provided keys");
+                }
+            } else {
+                (&key1, &key2)
+            };
+
+            let target = client.get(target_key)?;
+            let source = client.get(source_key)?;
+
+            /* Reject merge of non-top-level items */
+            let reject_types = ["attachment", "note", "annotation"];
+            for (label, item) in [("target", &target), ("source", &source)] {
+                if let Some(ref t) = item.data.item_type {
+                    if reject_types.contains(&t.as_str()) {
+                        anyhow::bail!(
+                            "{} ({}) is a {} -- only top-level items can be merged",
+                            label,
+                            item.key,
+                            t
+                        );
+                    }
+                }
+            }
+
+            let merged_data = merge::reconcile_items(&target, &source);
+            let source_children = client.children(source_key)?;
+
+            if dry_run {
+                println!(
+                    "{}",
+                    merge::build_dry_run_report(&target, &source, &merged_data, &source_children)
+                );
+                return Ok(());
+            }
+
+            client.patch_item(target_key, target.version, &merged_data)?;
+
+            for child in &source_children {
+                let child_key = child["key"]
+                    .as_str()
+                    .context("child item missing key")?;
+                let child_version = child["version"]
+                    .as_u64()
+                    .context("child item missing version")?;
+                let reparent = serde_json::json!({"parentItem": target_key});
+                client.patch_item(child_key, child_version, &reparent)?;
+            }
+
+            /* Re-fetch source to get its latest version (may have changed
+               when children were re-parented). */
+            let source_fresh = client.get(source_key)?;
+            client.trash_item(source_key, source_fresh.version)?;
+
+            eprintln!(
+                "{} merged {} into {}",
+                "done:".green().bold(),
+                source_key,
+                target_key
+            );
+            if !source_children.is_empty() {
+                eprintln!("  {} child item(s) re-parented", source_children.len());
+            }
+            eprintln!("  {} moved to trash", source_key);
         }
 
         Commands::Completions { shell } => {
