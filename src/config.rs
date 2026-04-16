@@ -55,6 +55,11 @@ impl Config {
         if let Ok(key) = std::env::var("ZOTERO_API_KEY") {
             cfg.api_key = Some(key);
         }
+        if let Ok(uid) = std::env::var("ZOTERO_USER_ID") {
+            if let Ok(id) = uid.parse::<u64>() {
+                cfg.user_id = Some(id);
+            }
+        }
         Ok(cfg)
     }
 

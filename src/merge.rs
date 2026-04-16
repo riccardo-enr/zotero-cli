@@ -57,6 +57,26 @@ pub fn reconcile_items(target: &ZoteroItem, source: &ZoteroItem) -> Value {
         .collect();
     merged_obj.insert("tags".into(), Value::Array(tags_val));
 
+    /* Clean creators: Zotero API rejects creators that have both
+       firstName/lastName and name fields, even when some are null. */
+    if let Some(creators) = merged_obj.get_mut("creators") {
+        if let Some(arr) = creators.as_array_mut() {
+            for creator in arr.iter_mut() {
+                if let Some(obj) = creator.as_object_mut() {
+                    let has_name = obj.get("name")
+                        .map(|v| !v.is_null() && v.as_str() != Some(""))
+                        .unwrap_or(false);
+                    if has_name {
+                        obj.remove("firstName");
+                        obj.remove("lastName");
+                    } else {
+                        obj.remove("name");
+                    }
+                }
+            }
+        }
+    }
+
     /* Union collections by key */
     let mut col_set: HashSet<String> = HashSet::new();
     for c in &target.data.collections {

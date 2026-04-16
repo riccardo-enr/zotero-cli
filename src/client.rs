@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::types::{ZoteroCollection, ZoteroItem};
 
 const API_VERSION: &str = "3";
+const WEB_API_BASE: &str = "https://api.zotero.org";
 const TRANSLATOR_URL: &str = "http://localhost:1969/web";
 
 /* ZoteroClient wraps the Zotero local connector API (localhost:23119/api).
@@ -69,9 +70,23 @@ impl ZoteroClient {
     /* Build the library-scoped path prefix, e.g. /users/123 or /groups/456 */
     fn lib_path(&self) -> String {
         /* userID=0 is a special alias for the currently logged-in user's
-        local library — always valid against the local connector API. */
+        local library -- always valid against the local connector API. */
         let id = self.user_id.unwrap_or(0);
         format!("/{}/{}", pluralise(&self.library_type), id)
+    }
+
+    /* Write operations (PATCH, DELETE) are not supported by the local
+       connector API.  When an API key and user ID are configured, route
+       writes through the Zotero Web API instead. */
+    fn write_base(&self) -> anyhow::Result<&str> {
+        if self.api_key.is_some() && self.user_id.is_some() {
+            Ok(WEB_API_BASE)
+        } else {
+            anyhow::bail!(
+                "merge requires api_key and user_id -- set ZOTERO_API_KEY and \
+                 ZOTERO_USER_ID env vars or add them to config.toml"
+            );
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -183,15 +198,17 @@ impl ZoteroClient {
     }
 
     pub fn patch_item(&self, key: &str, version: u64, data: &Value) -> Result<()> {
+        let base = self.write_base()?;
         let lib = self.lib_path();
-        let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
+        let url = format!("{}{}/items/{}?v={API_VERSION}", base, lib, key);
         self.patch_json(&url, data, version)?;
         Ok(())
     }
 
     pub fn trash_item(&self, key: &str, version: u64) -> Result<()> {
+        let base = self.write_base()?;
         let lib = self.lib_path();
-        let url = format!("{}{}/items/{}?v={API_VERSION}", self.base, lib, key);
+        let url = format!("{}{}/items/{}?v={API_VERSION}", base, lib, key);
         let payload = serde_json::json!({"deleted": 1});
         self.patch_json(&url, &payload, version)?;
         Ok(())
